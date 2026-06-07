@@ -30,3 +30,6 @@ Thumbs.db
 
 # Model Cache
 .cache/
+
+# Screenshots
+bip_ss/
