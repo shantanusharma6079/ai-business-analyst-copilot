@@ -19,8 +19,11 @@ OCR_MIN_CHARS = 50
 # Tesseract works best when text is ~20-30px tall: 300 DPI gets 11pt text there
 OCR_DPI = 300
 
+# Problems with the environment, not the page: these fail the whole document
+SYSTEM_ERRORS = (pytesseract.TesseractNotFoundError, MemoryError)
+
 def extract_pdf_pages(file_path: str):
-    document = fitz.open(file_path)
+    document = fitz.open(file_path, filetype="pdf")
 
     body_size = get_body_font_size(document)
     last_heading = None
@@ -28,50 +31,66 @@ def extract_pdf_pages(file_path: str):
     pages = []
 
     for page_number, page in enumerate(document, start=1):
-        if is_scanned(page):
-            text, confidence = ocr_page(page)
-            pages.append({
+        # One broken page is skipped instead of failing the whole document
+        try:
+            extracted, last_heading = extract_page(page, page_number, body_size, last_heading)
+        except SYSTEM_ERRORS:
+            raise
+        except Exception as e:
+            extracted = {
                 "page": page_number,
-                "text": text,
+                "text": "",
                 "tables": [],
-                "ocr_confidence": confidence
-            })
-            continue
+                "ocr_confidence": None,
+                "error": f"{type(e).__name__}: {e}"[:200]
+            }
 
-        table_rects = []
-        tables = []
-        lines = get_lines(page)
-
-        for table in page.find_tables().tables:
-            rect = fitz.Rect(table.bbox)
-            table_rects.append(rect)
-            tables.append({"rect": rect, "markdown": clean_markdown(table.to_markdown())})
-
-        headings = [
-            line for line in lines
-            if is_heading(line, body_size) and not overlaps_any(line["rect"], table_rects)
-        ]
-
-        for table in tables:
-            heading = find_heading_above(headings, table["rect"]) or last_heading
-            caption = find_caption_below(lines, table["rect"])
-            table["heading"] = heading
-            table["caption"] = caption
-            del table["rect"]
-
-        if headings:
-            last_heading = headings[-1]["text"]
-
-        pages.append({
-            "page": page_number,
-            "text": get_text_outside_tables(page, table_rects),
-            "tables": tables,
-            "ocr_confidence": None
-        })
+        pages.append(extracted)
 
     document.close()
 
     return pages
+
+def extract_page(page, page_number, body_size, last_heading):
+    if is_scanned(page):
+        text, confidence = ocr_page(page)
+        return {
+            "page": page_number,
+            "text": text,
+            "tables": [],
+            "ocr_confidence": confidence
+        }, last_heading
+
+    table_rects = []
+    tables = []
+    lines = get_lines(page)
+
+    for table in page.find_tables().tables:
+        rect = fitz.Rect(table.bbox)
+        table_rects.append(rect)
+        tables.append({"rect": rect, "markdown": clean_markdown(table.to_markdown())})
+
+    headings = [
+        line for line in lines
+        if is_heading(line, body_size) and not overlaps_any(line["rect"], table_rects)
+    ]
+
+    for table in tables:
+        heading = find_heading_above(headings, table["rect"]) or last_heading
+        caption = find_caption_below(lines, table["rect"])
+        table["heading"] = heading
+        table["caption"] = caption
+        del table["rect"]
+
+    if headings:
+        last_heading = headings[-1]["text"]
+
+    return {
+        "page": page_number,
+        "text": get_text_outside_tables(page, table_rects),
+        "tables": tables,
+        "ocr_confidence": None
+    }, last_heading
 
 def is_scanned(page):
     return len(page.get_text().strip()) < OCR_MIN_CHARS
@@ -120,7 +139,12 @@ def get_body_font_size(document):
     sizes = Counter()
 
     for page in document:
-        for block in page.get_text("dict")["blocks"]:
+        try:
+            blocks = page.get_text("dict")["blocks"]
+        except Exception:
+            # Broken pages are reported by extract_page; skip them here
+            continue
+        for block in blocks:
             for line in block.get("lines", []):
                 for span in line["spans"]:
                     sizes[round(span["size"], 1)] += len(span["text"].strip())

@@ -29,20 +29,31 @@ def ingest_document(db, document):
 
     try:
         pages = extract_pdf_pages(document.file_path)
+        skipped = [page for page in pages if page.get("error")]
+
+        if len(skipped) == len(pages):
+            raise ValueError(f"All {len(pages)} pages failed, first error: {skipped[0]['error']}")
+
         text = "\n".join(
             "\n\n".join([page["text"]] + [format_table(table) for table in page["tables"]])
             for page in pages
         )
 
         if not text.strip():
-            raise ValueError("No extractable text (scanned or empty PDF?)")
+            raise ValueError("No extractable text (blank pages, or OCR found nothing)")
 
         chunks = split_pages(pages)
         chunk_count = store_chunks(db, document.id, chunks)
 
+        # On a ready document, error holds a warning about skipped pages
+        warning = None
+        if skipped:
+            numbers = ", ".join(str(page["page"]) for page in skipped)
+            warning = f"Skipped pages {numbers}. First error: {skipped[0]['error']}"[:1000]
+
         # Chunks, text and status commit together: all or nothing
         document.extracted_text = text
-        set_status(db, document, DocumentStatus.READY)
+        set_status(db, document, DocumentStatus.READY, warning)
 
         return chunk_count
 
