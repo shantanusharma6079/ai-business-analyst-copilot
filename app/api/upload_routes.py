@@ -3,11 +3,11 @@ from fastapi import UploadFile
 from fastapi import File
 from fastapi import Depends
 from fastapi import HTTPException
-from fastapi.responses import JSONResponse
-from app.database.models import DocumentStatus
+from fastapi import BackgroundTasks
+from fastapi.concurrency import run_in_threadpool
 from app.dependencies.database import get_db
 from sqlalchemy.orm import Session
-from app.services.document_service import (create_document, ingest_document)
+from app.services.document_service import (create_document, run_ingestion)
 from app.services.validation_service import (
     MAX_UPLOAD_BYTES,
     InvalidPDFError,
@@ -23,15 +23,20 @@ router = APIRouter(
 
 UPLOAD_DIR = "uploads"
 
-@router.post("")
-async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
+@router.post("", status_code=202)
+async def upload_file(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
 
     # Read one byte past the limit: enough to detect "too big" without loading it all
     data = await file.read(MAX_UPLOAD_BYTES + 1)
 
-    # Rejected files never reach disk or the database
+    # Rejected files never reach disk or the database.
+    # Parsing is blocking work, so keep it off the event loop.
     try:
-        validate_pdf(data)
+        await run_in_threadpool(validate_pdf, data)
     except InvalidPDFError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
@@ -41,17 +46,13 @@ async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db
         buffer.write(data)
 
     document = create_document(db, file.filename, file_path)
-    chunk_count = ingest_document(db, document)
 
-    body = {
+    # Runs after the response is sent; pass the id, not the ORM object
+    background_tasks.add_task(run_ingestion, document.id)
+
+    return {
         "document_id": document.id,
         "file_name": document.file_name,
         "status": document.status,
-        "error": document.error,
-        "chunks_created": chunk_count
+        "status_url": f"/documents/{document.id}/status"
     }
-
-    if document.status == DocumentStatus.FAILED.value:
-        return JSONResponse(status_code=422, content=body)
-
-    return body

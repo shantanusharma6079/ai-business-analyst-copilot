@@ -1,8 +1,13 @@
+import logging
+
+from app.database.db import SessionLocal
 from app.database.models import Document, DocumentStatus
 from app.database.chunk_models import (DocumentChunk)
 from app.services.embedding_service import (generate_embeddings)
 from app.services.pdf_service import (extract_pdf_pages)
 from app.services.chunk_service import (split_pages, format_table)
+
+logger = logging.getLogger(__name__)
 
 def create_document(db, file_name, file_path):
     document = Document(
@@ -62,6 +67,59 @@ def ingest_document(db, document):
         set_status(db, document, DocumentStatus.FAILED, f"{type(e).__name__}: {e}"[:1000])
 
         return 0
+
+def run_ingestion(document_id):
+    # Runs after the response is sent, so it cannot use the request's session.
+    # A plain def: FastAPI runs it in a thread pool, off the event loop.
+    db = SessionLocal()
+
+    try:
+        document = get_document(db, document_id)
+
+        if document is None:
+            logger.error("Ingestion skipped: document %s not found", document_id)
+            return
+
+        chunk_count = ingest_document(db, document)
+        logger.info("Document %s %s (%s chunks)", document_id, document.status, chunk_count)
+
+    except Exception:
+        # No response to report to: the log is the only place this shows up
+        logger.exception("Ingestion crashed for document %s", document_id)
+
+    finally:
+        db.close()
+
+def fail_interrupted_documents(db):
+    # In-memory background tasks die with the process; without this,
+    # documents stay pending/processing forever after a restart
+    documents = db.query(Document).filter(
+        Document.status.in_([DocumentStatus.PENDING.value, DocumentStatus.PROCESSING.value])
+    ).all()
+
+    for document in documents:
+        document.status = DocumentStatus.FAILED.value
+        document.error = "Interrupted by server restart, please upload again"
+
+    db.commit()
+
+    return len(documents)
+
+def get_document_status(db, document_id):
+    document = get_document(db, document_id)
+
+    if document is None:
+        return None
+
+    chunk_count = db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).count()
+
+    return {
+        "document_id": document.id,
+        "file_name": document.file_name,
+        "status": document.status,
+        "error": document.error,
+        "chunks": chunk_count
+    }
 
 def get_documents(db):
     return db.query(Document).all()
