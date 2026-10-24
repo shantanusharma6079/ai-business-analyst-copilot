@@ -26,10 +26,11 @@ def store_chunks(db, document_id, chunks):
     rows = []
     
     for chunk in chunks:
-        embedding = generate_embedding(chunk)
+        embedding = generate_embedding(chunk["text"])
         row = DocumentChunk(
             document_id = document_id,
-            chunk_text = chunk,
+            chunk_text = chunk["text"],
+            page = chunk["page"],
             embedding = embedding
         )
         rows.append(row)

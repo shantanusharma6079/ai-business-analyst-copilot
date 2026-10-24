@@ -14,4 +14,5 @@ class DocumentChunk(Base):
     id = Column(Integer, primary_key=True)
     document_id = Column(Integer, ForeignKey("documents.id"))
     chunk_text = Column(Text)
+    page = Column(Integer)
     embedding = Column(Vector(384))

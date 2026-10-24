@@ -6,11 +6,15 @@ def search_chunks(db, query, limit=5):
     
     sql = text("""
         SELECT
-            id,
-            chunk_text,
-            embedding <=> CAST(:embedding AS vector) AS distance
-        FROM document_chunks
-        ORDER BY embedding <=> CAST(:embedding AS vector)
+            c.id,
+            c.chunk_text,
+            c.embedding <=> CAST(:embedding AS vector) AS distance,
+            c.document_id,
+            d.file_name,
+            c.page
+        FROM document_chunks c
+        JOIN documents d ON d.id = c.document_id
+        ORDER BY c.embedding <=> CAST(:embedding AS vector)
         LIMIT :limit
     """)
     

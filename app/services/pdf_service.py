@@ -1,11 +1,16 @@
 import fitz
 
-def extract_pdf_text(file_path: str):
+def extract_pdf_pages(file_path: str):
     document = fitz.open(file_path)
 
-    text = ""
+    pages = []
 
-    for page in document:
-        text += page.get_text()
+    for page_number, page in enumerate(document, start=1):
+        pages.append({
+            "page": page_number,
+            "text": page.get_text()
+        })
 
-    return text
+    document.close()
+
+    return pages

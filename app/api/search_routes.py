@@ -23,9 +23,12 @@ def search(
         "query": data.query,
         "results": [
             {
-                "chunk_id": row[0],
-                "chunk_text": row[1],
-                "similarity": row[2]
+                "chunk_id": row.id,
+                "chunk_text": row.chunk_text,
+                "similarity": row.distance,
+                "document_id": row.document_id,
+                "file_name": row.file_name,
+                "page": row.page
             }
             for row in results
         ]
