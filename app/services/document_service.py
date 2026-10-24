@@ -2,7 +2,7 @@ from app.database.models import Document, DocumentStatus
 from app.database.chunk_models import (DocumentChunk)
 from app.services.embedding_service import (generate_embeddings)
 from app.services.pdf_service import (extract_pdf_pages)
-from app.services.chunk_service import (split_pages)
+from app.services.chunk_service import (split_pages, format_table)
 
 def create_document(db, file_name, file_path):
     document = Document(
@@ -29,7 +29,10 @@ def ingest_document(db, document):
 
     try:
         pages = extract_pdf_pages(document.file_path)
-        text = "\n".join(page["text"] for page in pages)
+        text = "\n".join(
+            "\n\n".join([page["text"]] + [format_table(table) for table in page["tables"]])
+            for page in pages
+        )
 
         if not text.strip():
             raise ValueError("No extractable text (scanned or empty PDF?)")

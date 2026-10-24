@@ -18,4 +18,22 @@ def split_pages(pages):
                 "text": text
             })
 
+        # A table is never split: one chunk per table, with its context on top
+        for table in page.get("tables", []):
+            chunks.append({
+                "page": page["page"],
+                "text": format_table(table)
+            })
+
     return chunks
+
+def format_table(table):
+    parts = []
+
+    if table.get("heading"):
+        parts.append(f"## {table['heading']}")
+    if table.get("caption"):
+        parts.append(table["caption"])
+    parts.append(table["markdown"])
+
+    return "\n\n".join(parts)
