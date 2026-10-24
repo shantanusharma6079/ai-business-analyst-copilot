@@ -15,14 +15,16 @@ def split_pages(pages):
         for text in splitter.split_text(page["text"]):
             chunks.append({
                 "page": page["page"],
-                "text": text
+                "text": text,
+                "ocr_confidence": page.get("ocr_confidence")
             })
 
         # A table is never split: one chunk per table, with its context on top
         for table in page.get("tables", []):
             chunks.append({
                 "page": page["page"],
-                "text": format_table(table)
+                "text": format_table(table),
+                "ocr_confidence": None
             })
 
     return chunks

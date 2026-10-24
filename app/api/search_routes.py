@@ -28,7 +28,8 @@ def search(
                 "similarity": row.distance,
                 "document_id": row.document_id,
                 "file_name": row.file_name,
-                "page": row.page
+                "page": row.page,
+                "ocr_confidence": row.ocr_confidence
             }
             for row in results
         ]

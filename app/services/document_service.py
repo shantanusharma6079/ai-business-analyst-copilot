@@ -68,6 +68,7 @@ def store_chunks(db, document_id, chunks):
             document_id = document_id,
             chunk_text = chunk["text"],
             page = chunk["page"],
+            ocr_confidence = chunk.get("ocr_confidence"),
             embedding = embedding
         )
         rows.append(row)

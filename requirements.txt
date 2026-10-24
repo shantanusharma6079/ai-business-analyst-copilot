@@ -17,6 +17,10 @@ python-dotenv==1.2.2
 PyMuPDF==1.27.2.3
 langchain-text-splitters==1.1.2
 
+# OCR (also needs the Tesseract binary: see TESSERACT_CMD in .env.example)
+pytesseract==0.3.13
+Pillow==13.0.0
+
 # Embeddings + LLM
 sentence-transformers==5.5.1
 langchain-groq==1.1.2

@@ -11,7 +11,8 @@ def search_chunks(db, query, limit=5):
             c.embedding <=> CAST(:embedding AS vector) AS distance,
             c.document_id,
             d.file_name,
-            c.page
+            c.page,
+            c.ocr_confidence
         FROM document_chunks c
         JOIN documents d ON d.id = c.document_id
         WHERE d.status = 'ready'

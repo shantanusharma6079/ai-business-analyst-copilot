@@ -1,9 +1,23 @@
+import os
 import re
 from collections import Counter
 
 import fitz
+import pytesseract
+from dotenv import load_dotenv
+from PIL import Image
+
+load_dotenv()
+
+if os.getenv("TESSERACT_CMD"):
+    pytesseract.pytesseract.tesseract_cmd = os.getenv("TESSERACT_CMD")
 
 CAPTION_PATTERN = re.compile(r"^(table|tab\.)\s*\d+", re.IGNORECASE)
+
+# A page with less native text than this is treated as a scanned image
+OCR_MIN_CHARS = 50
+# Tesseract works best when text is ~20-30px tall: 300 DPI gets 11pt text there
+OCR_DPI = 300
 
 def extract_pdf_pages(file_path: str):
     document = fitz.open(file_path)
@@ -14,6 +28,16 @@ def extract_pdf_pages(file_path: str):
     pages = []
 
     for page_number, page in enumerate(document, start=1):
+        if is_scanned(page):
+            text, confidence = ocr_page(page)
+            pages.append({
+                "page": page_number,
+                "text": text,
+                "tables": [],
+                "ocr_confidence": confidence
+            })
+            continue
+
         table_rects = []
         tables = []
         lines = get_lines(page)
@@ -41,12 +65,55 @@ def extract_pdf_pages(file_path: str):
         pages.append({
             "page": page_number,
             "text": get_text_outside_tables(page, table_rects),
-            "tables": tables
+            "tables": tables,
+            "ocr_confidence": None
         })
 
     document.close()
 
     return pages
+
+def is_scanned(page):
+    return len(page.get_text().strip()) < OCR_MIN_CHARS
+
+def ocr_page(page):
+    pixmap = page.get_pixmap(dpi=OCR_DPI)
+    image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+
+    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+
+    # Rebuild text line by line; Tesseract numbers blocks, paragraphs and lines
+    lines = {}
+    total_weight = 0
+    weighted_confidence = 0
+
+    for i, word in enumerate(data["text"]):
+        word = word.strip()
+        confidence = float(data["conf"][i])
+
+        # -1 marks layout boxes, not words
+        if not word or confidence < 0:
+            continue
+
+        key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+        lines.setdefault(key, []).append(word)
+
+        # Weight by length so a misread long word counts more than a stray "a"
+        total_weight += len(word)
+        weighted_confidence += confidence * len(word)
+
+    text = ""
+    previous = None
+
+    for key in sorted(lines):
+        if previous is not None:
+            text += "\n\n" if key[:2] != previous[:2] else "\n"
+        text += " ".join(lines[key])
+        previous = key
+
+    confidence = round(weighted_confidence / total_weight, 1) if total_weight else None
+
+    return text, confidence
 
 def get_body_font_size(document):
     # Most common font size, weighted by characters = body text size

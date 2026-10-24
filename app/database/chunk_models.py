@@ -1,6 +1,7 @@
 from sqlalchemy import (
     Column,
     Integer,
+    Float,
     Text,
     ForeignKey,
     Index
@@ -16,6 +17,8 @@ class DocumentChunk(Base):
     document_id = Column(Integer, ForeignKey("documents.id"))
     chunk_text = Column(Text)
     page = Column(Integer)
+    # NULL = native PDF text; 0-100 = Tesseract confidence for an OCR'd page
+    ocr_confidence = Column(Float)
     embedding = Column(Vector(384))
 
     __table_args__ = (
