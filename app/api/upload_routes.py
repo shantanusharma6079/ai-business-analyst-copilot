@@ -2,12 +2,11 @@ from fastapi import APIRouter
 from fastapi import UploadFile
 from fastapi import File
 from fastapi import Depends
-from app.services.pdf_service import extract_pdf_pages
-from app.services.document_service import save_document
+from fastapi.responses import JSONResponse
+from app.database.models import DocumentStatus
 from app.dependencies.database import get_db
 from sqlalchemy.orm import Session
-from app.services.chunk_service import (split_pages)
-from app.services.document_service import (store_chunks)
+from app.services.document_service import (create_document, ingest_document)
 
 import os
 
@@ -26,16 +25,18 @@ async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
 
-    pages = extract_pdf_pages(file_path)
-    text = "\n".join(page["text"] for page in pages)
+    document = create_document(db, file.filename, file_path)
+    chunk_count = ingest_document(db, document)
 
-    document = save_document(db, file.filename, file_path, text)
-
-    chunks = split_pages(pages)
-    chunk_count = store_chunks(db, document.id, chunks)
-
-    return {
+    body = {
         "document_id": document.id,
         "file_name": document.file_name,
+        "status": document.status,
+        "error": document.error,
         "chunks_created": chunk_count
     }
+
+    if document.status == DocumentStatus.FAILED.value:
+        return JSONResponse(status_code=422, content=body)
+
+    return body

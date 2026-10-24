@@ -14,6 +14,7 @@ def search_chunks(db, query, limit=5):
             c.page
         FROM document_chunks c
         JOIN documents d ON d.id = c.document_id
+        WHERE d.status = 'ready'
         ORDER BY c.embedding <=> CAST(:embedding AS vector)
         LIMIT :limit
     """)
