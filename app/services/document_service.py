@@ -1,6 +1,6 @@
 from app.database.models import Document
 from app.database.chunk_models import (DocumentChunk)
-from app.services.embedding_service import (generate_embedding)
+from app.services.embedding_service import (generate_embeddings)
 
 def save_document(db, file_name, file_path, text):
     document = Document(
@@ -24,9 +24,9 @@ def get_document(db, document_id):
 
 def store_chunks(db, document_id, chunks):
     rows = []
-    
-    for chunk in chunks:
-        embedding = generate_embedding(chunk["text"])
+    embeddings = generate_embeddings([chunk["text"] for chunk in chunks])
+
+    for chunk, embedding in zip(chunks, embeddings):
         row = DocumentChunk(
             document_id = document_id,
             chunk_text = chunk["text"],
